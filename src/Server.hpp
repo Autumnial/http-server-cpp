@@ -13,6 +13,9 @@ class Server{
         int sock; 
         std::map<std::string, Route> routes;
 
+    private:
+        Request parse_request(std::string request_string); 
+
     public:
         Server(in_port_t port);
         void run();

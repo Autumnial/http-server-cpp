@@ -1,6 +1,9 @@
 #pragma once
+#include "Enums.hpp"
 
-
-class Request{
-    // todo: make the class :p
+#include <string>
+class Request {
+  public:
+    std::string path;
+    Method      method;
 };

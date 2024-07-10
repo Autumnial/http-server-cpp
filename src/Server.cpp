@@ -1,16 +1,20 @@
 #include "Server.hpp"
+#include <cerrno>
 #include <cstddef>
 #include <cstring>
 #include <iostream>
 #include <pthread.h>
+#include <string>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <thread>
 #include <unistd.h>
+#include "Enums.hpp"
+#include "Request.hpp"
 #include "ncurses.h"
 
-bool should_close = false;
-
 void *manual_close(void *sock_v) {
+    bool should_close = false;
     initscr();
     nodelay(stdscr, false);
     printw("server starting...\n");
@@ -18,17 +22,19 @@ void *manual_close(void *sock_v) {
 
     int sock = *(int *)sock_v;
 
-    int ch;
-    ch = getch();
+    while (!should_close) {
 
-    printw("test");
+        int ch;
+        ch = getch();
 
-    if (ch == 'q') {
-        should_close = true;
-        endwin();
-        close(sock);
-        exit(0);
+        if (ch == 'q') {
+            should_close = true;
+        }
     }
+
+    endwin();
+    close(sock);
+    exit(0);
     return NULL;
 }
 
@@ -36,7 +42,7 @@ Server::Server(in_port_t port) {
     this->sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock <= 0) {
-        std::cout << "failure" << std::endl;
+        std::cout << std::strerror(errno) << std::endl;
         exit(-1);
     }
 
@@ -46,9 +52,46 @@ Server::Server(in_port_t port) {
     addr.sin_port = htons(port);
 
     if (bind(sock, (sockaddr *)&addr, sizeof(addr)) < 0) {
-        std::cout << "binding failed" << std::endl;
+        std::cout << std::strerror(errno) << std::endl;
         exit(-2);
     }
+}
+
+Request Server::parse_request(std::string req_str) {
+
+    Request req;
+
+    int carriage_return = req_str.find('\r');
+    int newline = req_str.find('\n');
+
+    std::string header;
+
+    if (carriage_return != std::string::npos) {
+        header = req_str.substr(0, carriage_return);
+        req_str = req_str.substr(newline + 1);
+    } else {
+        header = req_str.substr(0, newline);
+        req_str = req_str.substr(newline + 1);
+    }
+
+    int         space = header.find(' ');
+    std::string method = header.substr(0, space);
+    header = header.substr(space + 1);
+
+    space = header.find(' ');
+    std::string path = header.substr(0, space);
+    std::string http = header.substr(space + 1);
+
+    req.method = method_from_string(method); 
+    req.path = path; 
+    // parse headers
+    //
+
+    std::cout << method << "\r\n";
+    std::cout << path << "\r\n";
+    std::cout << http << "\r\n";
+
+    return req;
 }
 
 void Server::run() {
@@ -73,20 +116,15 @@ void Server::run() {
 
         char buff[4096] = {0};
         recv(client, &buff, 4096, 0);
-        std::cout << buff << std::endl;
 
         std::string buf(buff);
 
-        if (buf.compare("close") == 0 || buf.compare("close\n") == 0) {
-            shutdown(sock, SHUT_RDWR);
-            close(sock);
-            exit(0);
-        }
+        Request req = parse_request(buf);
 
-        std::string messg = "OK";
+        std::string messg = "HTTP/1.1 200 OK\nConnection: close\n\nhaii ^w^"; 
 
         send(client, messg.c_str(), messg.length(), 0);
-
+        
         close(client);
     }
 }
