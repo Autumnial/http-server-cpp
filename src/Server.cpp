@@ -10,11 +10,13 @@
 
 bool should_close = false;
 
-void *get_input(void *_) {
+void *manual_close(void *sock_v) {
     initscr();
     nodelay(stdscr, false);
     printw("server starting...\n");
     refresh();
+
+    int sock = *(int *)sock_v;
 
     int ch;
     ch = getch();
@@ -24,6 +26,8 @@ void *get_input(void *_) {
     if (ch == 'q') {
         should_close = true;
         endwin();
+        close(sock);
+        exit(0);
     }
     return NULL;
 }
@@ -50,11 +54,11 @@ Server::Server(in_port_t port) {
 void Server::run() {
 
     pthread_t input_thread;
-    pthread_create(&input_thread, NULL, get_input, NULL);
+    pthread_create(&input_thread, NULL, manual_close, &sock);
 
     listen(sock, 10);
 
-    while (!should_close) {
+    while (true) {
 
         // handle connection
         int client;
@@ -85,9 +89,4 @@ void Server::run() {
 
         close(client);
     }
-    pthread_join(input_thread, nullptr);
-
-    std::cout << "uwu";
-
-    close(sock);
 }
