@@ -4,6 +4,7 @@
 #include <cstring>
 #include <iostream>
 #include <pthread.h>
+#include <queue>
 #include <string>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -11,7 +12,19 @@
 #include <unistd.h>
 #include "Enums.hpp"
 #include "Request.hpp"
+#include "Response.hpp"
 #include "ncurses.h"
+typedef Response (*Route)(Request);
+
+const int NUM_THREADS = 10;
+
+std::queue<int> connection_queue;
+pthread_mutex_t connection_queue_mutex;
+pthread_cond_t  connection_queue_not_empty;
+
+std::map<std::string, Route> *routes_p;
+
+void handle_connection(int client);
 
 void *manual_close(void *sock_v) {
     bool should_close = false;
@@ -38,6 +51,39 @@ void *manual_close(void *sock_v) {
     return NULL;
 }
 
+void *await_connection(void *_) {
+
+    while (true) {
+
+        pthread_mutex_lock(&connection_queue_mutex);
+        while (connection_queue.size() == 0) {
+            pthread_cond_wait(&connection_queue_not_empty,
+                              &connection_queue_mutex);
+        }
+
+        // do shit
+        int client = connection_queue.front();
+        connection_queue.pop();
+
+        pthread_mutex_unlock(&connection_queue_mutex);
+
+        handle_connection(client);
+        // do more shit
+    }
+
+    return NULL;
+}
+
+Response not_found() {
+    Response response;
+    response.set_statusCode(StatusCode::NOT_FOUND);
+    return response;
+}
+
+void Server::add_route(std::string route, Route func) {
+    routes.insert({route, func});
+};
+
 Server::Server(in_port_t port) {
     this->sock = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -57,7 +103,7 @@ Server::Server(in_port_t port) {
     }
 }
 
-Request Server::parse_request(std::string req_str) {
+Request parse_request(std::string req_str) {
 
     Request req;
 
@@ -82,22 +128,21 @@ Request Server::parse_request(std::string req_str) {
     std::string path = header.substr(0, space);
     std::string http = header.substr(space + 1);
 
-    req.method = method_from_string(method); 
-    req.path = path; 
-    // parse headers
-    //
-
-    std::cout << method << "\r\n";
-    std::cout << path << "\r\n";
-    std::cout << http << "\r\n";
+    req.method = method_from_string(method);
+    req.path = path;
 
     return req;
 }
 
 void Server::run() {
-
+    routes_p = &this->routes;
     pthread_t input_thread;
     pthread_create(&input_thread, NULL, manual_close, &sock);
+
+    for(int i = 0; i < NUM_THREADS; i++){
+        pthread_t connection_thread; 
+        pthread_create(&connection_thread, NULL, await_connection, NULL);
+    }
 
     listen(sock, 10);
 
@@ -114,17 +159,37 @@ void Server::run() {
             exit(-3);
         }
 
-        char buff[4096] = {0};
-        recv(client, &buff, 4096, 0);
+        // TODO: put in queue;
 
-        std::string buf(buff);
-
-        Request req = parse_request(buf);
-
-        std::string messg = "HTTP/1.1 200 OK\nConnection: close\n\nhaii ^w^"; 
-
-        send(client, messg.c_str(), messg.length(), 0);
-        
-        close(client);
+        pthread_mutex_lock(&connection_queue_mutex);
+        connection_queue.push(client);
+        pthread_mutex_unlock(&connection_queue_mutex);
+        pthread_cond_signal(&connection_queue_not_empty);
     }
+}
+
+void handle_connection(int client) {
+
+    char buff[4096] = {0};
+    recv(client, &buff, 4096, 0);
+
+    std::string buf(buff);
+
+    Request req = parse_request(buf);
+
+    Response resp;
+
+    auto r = routes_p->find(req.path);
+
+    if (r != routes_p->end()) {
+        resp = (r->second)(req);
+    } else {
+        resp = not_found();
+    }
+
+    std::string messg = resp.build_response();
+
+    send(client, messg.c_str(), messg.length(), 0);
+
+    close(client);
 }

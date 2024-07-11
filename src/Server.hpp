@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <netinet/in.h>
+#include <pthread.h>
 #include <string>
 class Server{
     typedef Response (*Route)(Request);
@@ -13,10 +14,8 @@ class Server{
         int sock; 
         std::map<std::string, Route> routes;
 
-    private:
-        Request parse_request(std::string request_string); 
-
     public:
         Server(in_port_t port);
         void run();
+        void add_route(std::string route, Route func);
 };
