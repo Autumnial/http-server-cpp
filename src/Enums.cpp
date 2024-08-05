@@ -213,7 +213,8 @@ std::string status_to_string(StatusCode status) {
         return "511 Network Authentication Required";
     }
     default: {
-        exit(-1);
+        // SHOULD be unreachable, but we don't want undefined behaviour if shit goes wrong :p 
+       exit(-1);
     }
     }
 }
