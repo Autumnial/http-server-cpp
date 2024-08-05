@@ -8,8 +8,9 @@ class Response{
 
     public:
         std::string build_response();
-        void set_header(std::string header, std::string value);
-        void set_body(std::string body); 
-        void append_body(std::string append_str); 
-        void set_statusCode(StatusCode code); 
+        Response* set_header(std::string header, std::string value);
+        Response* set_body(std::string body); 
+        Response* append_body(std::string append_str); 
+        Response* set_statusCode(StatusCode code); 
+        static Response* create_response(); 
 };

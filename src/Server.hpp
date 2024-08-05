@@ -8,7 +8,7 @@
 #include <pthread.h>
 #include <string>
 class Server{
-    typedef Response (*Route)(Request);
+    typedef Response * (*Route)(Request);
     
     private: 
         int sock; 

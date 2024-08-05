@@ -1,6 +1,7 @@
 #include "Response.hpp"
 #include "Enums.hpp"
 #include <chrono>
+#include <cstring>
 #include <ctime>
 #include <iomanip>
 #include <string>
@@ -10,18 +11,18 @@ std::string Response::build_response() {
 
     this->set_header("content-length", std::to_string(body.size()));
     this->set_header("content-type", "text/plain");
+    this->set_header("server", "Cel's CPP server :D");
 
-    auto now = std::chrono::system_clock::now(); 
+    auto now = std::chrono::system_clock::now();
 
-    auto now_t = std::chrono::system_clock::to_time_t(now); 
+    auto now_t = std::chrono::system_clock::to_time_t(now);
 
-    std::tm* gmtime = std::gmtime(&now_t); 
-
+    std::tm *gmtime = std::gmtime(&now_t);
 
     std::ostrstream timestr;
-    timestr << std::put_time(gmtime, "%a, %e %b %Y %H:%M:%S GMT" ); 
+    timestr << std::put_time(gmtime, "%a, %e %b %Y %H:%M:%S GMT");
 
-    this->set_header("date", timestr.str()); 
+    this->set_header("date", timestr.str());
 
     std::string resp_string = "HTTP/1.1 ";
     resp_string.append(status_to_string(statusCode));
@@ -40,16 +41,32 @@ std::string Response::build_response() {
     return resp_string;
 }
 
-void Response::set_header(std::string header, std::string value) {
+Response *Response::set_header(std::string header, std::string value) {
     if (headers.contains(header)) {
         headers.at(header) = value;
     } else {
         headers.insert({header, value});
     }
+
+    return this;
 }
 
-void Response::set_body(std::string body) { this->body = body; }
+Response *Response::set_body(std::string body) {
+    this->body = body;
+    return this;
+}
 
-void Response::append_body(std::string body) { this->body.append(body); }
+Response *Response::append_body(std::string body) {
+    this->body.append(body);
+    return this;
+}
 
-void Response::set_statusCode(StatusCode code) { this->statusCode = code; }
+Response *Response::set_statusCode(StatusCode code) {
+    this->statusCode = code;
+    return this;
+}
+
+Response *Response::create_response() {
+    Response *response = new Response(); 
+    return response;
+}

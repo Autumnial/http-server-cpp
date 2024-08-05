@@ -14,7 +14,7 @@
 #include "Request.hpp"
 #include "Response.hpp"
 #include "ncurses.h"
-typedef Response (*Route)(Request);
+typedef Response * (*Route)(Request);
 
 const int NUM_THREADS = 10;
 
@@ -61,23 +61,20 @@ void *await_connection(void *_) {
                               &connection_queue_mutex);
         }
 
-        // do shit
         int client = connection_queue.front();
         connection_queue.pop();
 
         pthread_mutex_unlock(&connection_queue_mutex);
 
         handle_connection(client);
-        // do more shit
     }
 
     return NULL;
 }
 
-Response not_found() {
-    Response response;
-    response.set_statusCode(StatusCode::NOT_FOUND);
-    return response;
+Response * not_found() {
+    auto r = Response::create_response()->set_statusCode(StatusCode::NOT_FOUND);  
+    return r;
 }
 
 void Server::add_route(std::string route, Route func) {
@@ -107,29 +104,39 @@ Request parse_request(std::string req_str) {
 
     Request req;
 
-    int carriage_return = req_str.find('\r');
     int newline = req_str.find('\n');
 
-    std::string header;
+    std::string request_line;
 
-    if (carriage_return != std::string::npos) {
-        header = req_str.substr(0, carriage_return);
-        req_str = req_str.substr(newline + 1);
-    } else {
-        header = req_str.substr(0, newline);
-        req_str = req_str.substr(newline + 1);
-    }
+    request_line = req_str.substr(0, newline);
+    req_str = req_str.substr(newline + 1);
 
-    int         space = header.find(' ');
-    std::string method = header.substr(0, space);
-    header = header.substr(space + 1);
+    int         space = request_line.find(' ');
+    std::string method = request_line.substr(0, space);
+    request_line = request_line.substr(space + 1);
 
-    space = header.find(' ');
-    std::string path = header.substr(0, space);
-    std::string http = header.substr(space + 1);
+    space = request_line.find(' ');
+    std::string path = request_line.substr(0, space);
+    std::string http = request_line.substr(space + 1);
 
     req.method = method_from_string(method);
     req.path = path;
+
+    int next_line = req_str.find('\n');
+
+    while (next_line != std::string::npos) {
+        std::string header = req_str.substr(0, next_line);
+        req_str = req_str.substr(next_line + 1);
+        // parse header
+        int         colon = header.find(':');
+        std::string header_title = header.substr(0, colon);
+        std::string header_value = header.substr(colon + 1);
+
+        req.headers.insert({header_title, header_value});
+
+        // new line
+        next_line = req_str.find('\n');
+    }
 
     return req;
 }
@@ -139,8 +146,8 @@ void Server::run() {
     pthread_t input_thread;
     pthread_create(&input_thread, NULL, manual_close, &sock);
 
-    for(int i = 0; i < NUM_THREADS; i++){
-        pthread_t connection_thread; 
+    for (int i = 0; i < NUM_THREADS; i++) {
+        pthread_t connection_thread;
         pthread_create(&connection_thread, NULL, await_connection, NULL);
     }
 
@@ -177,7 +184,7 @@ void handle_connection(int client) {
 
     Request req = parse_request(buf);
 
-    Response resp;
+    Response* resp;
 
     auto r = routes_p->find(req.path);
 
@@ -187,7 +194,8 @@ void handle_connection(int client) {
         resp = not_found();
     }
 
-    std::string messg = resp.build_response();
+    std::string messg = resp->build_response();
+    delete resp; 
 
     send(client, messg.c_str(), messg.length(), 0);
 

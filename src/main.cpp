@@ -12,22 +12,28 @@
 #include <netinet/ip.h>
 #include <unistd.h>
 
+Response *greet(Request _r) {
 
-Response greet(Request _r){
-    Response response; 
-    response.set_statusCode(StatusCode::OK);
-    response.set_body("Greetings, from the cpp server!");
+    auto response = Response::create_response()
+                        ->set_statusCode(StatusCode::OK)
+                        ->set_body("Greetings, from the cpp server!");
 
     return response;
 }
 
-Response sleepy(Request _r){
-    Response response; 
+Response *sleepy(Request _r) {
+    auto response = Response::create_response();
     sleep(5);
-    response.set_statusCode(StatusCode::OK);
-    response.set_body("zzzzz im a sleepy little route");
+    response->set_statusCode(StatusCode::OK);
+    response->set_body("zzzzz im a sleepy little route");
 
     return response;
+}
+
+Response *personal_greeting(Request _r) {
+    return Response::create_response()
+        ->set_statusCode(StatusCode::OK)
+        ->set_body("");
 }
 
 int main(int argc, char *argv[]) {
@@ -35,10 +41,8 @@ int main(int argc, char *argv[]) {
     Server server(6969);
     server.add_route("/", greet);
     server.add_route("/sleepy", sleepy);
+    server.add_route("/greet_name", personal_greeting);
     server.run();
 
     return 0;
 }
-
-
-
