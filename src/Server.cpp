@@ -1,5 +1,6 @@
 #include "Server.hpp"
 #include <algorithm>
+#include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
@@ -15,7 +16,7 @@
 #include "Request.hpp"
 #include "Response.hpp"
 #include "ncurses.h"
-typedef Response * (*Route)(Request);
+typedef Response *(*Route)(Request);
 
 const int NUM_THREADS = 10;
 const int REQ_BUF = 8096;
@@ -74,8 +75,8 @@ void *await_connection(void *_) {
     return NULL;
 }
 
-Response * not_found() {
-    auto r = Response::create_response()->set_statusCode(StatusCode::NOT_FOUND);  
+Response *not_found() {
+    auto r = Response::create_response()->set_statusCode(StatusCode::NOT_FOUND);
     return r;
 }
 
@@ -121,30 +122,32 @@ Request parse_request(std::string req_str) {
     std::string path = request_line.substr(0, space);
     std::string http = request_line.substr(space + 1);
 
-    req.method = method_from_string(method);
-    req.path = path;
+    int slash = http.find('/');
+    http = http.substr(slash + 1);
+
+    float http_vers = std::stof(http);
+
+    req.setMethod(method_from_string(method));
+    req.setPath(path);
 
     int next_line = req_str.find('\n');
 
     while (next_line != std::string::npos) {
 
-
-        std::string header = req_str.substr(0, next_line);
-        std::cout << header << '\n'; 
+        std::string header = req_str.substr(0, next_line );
         req_str = req_str.substr(next_line + 1);
         // Parse header
         int         colon = header.find(':');
         std::string header_title = header.substr(0, colon);
-        std::string header_value = header.substr(colon + 1);
+        std::string header_value = header.substr(colon + 2);
 
-        req.headers.insert({header_title, header_value});
+        req.setHeader(header_title, header_value);
 
         // New line
         next_line = req_str.find('\n');
     }
 
-    req.body = req_str; 
-
+    req.setBody(req_str);
 
     return req;
 }
@@ -185,27 +188,59 @@ void Server::run() {
 
 void handle_connection(int client) {
 
-    char buff[REQ_BUF] = {0};
-    recv(client, &buff, REQ_BUF, 0);
+    // loop while connected
 
-    std::string buf(buff);
+    std::array<char, REQ_BUF> buff;
+    bool                      close_connection = false;
 
-    Request req = parse_request(buf);
+    while (!close_connection) {
+        buff.fill(0);
+        // handle request
+        recv(client, &buff, REQ_BUF, 0);
 
-    Response* resp;
+        std::string buf(buff.data());
 
-    auto r = routes_p->find(req.path);
+        Request req = parse_request(buf);
 
-    if (r != routes_p->end()) {
-        resp = (r->second)(req);
-    } else {
-        resp = not_found();
+        Response *resp;
+
+        auto r = routes_p->find(req.getPath());
+
+        // map.find returns end() if not found
+        if (r != routes_p->end()) {
+            resp = (r->second)(req);
+        } else {
+            resp = not_found();
+        }
+
+        try {
+            auto connection = req.getHeader("Connection");
+            std::cout << connection << std::endl;
+            if (connection == "close\r") {
+                // Shut down connection
+                resp->set_header("Connection", "close");
+                close_connection = true;
+            } else {
+                resp->set_header("Connection", "keep-alive");
+            }
+        } catch (HeaderNotFoundException e) {
+
+            if (req.getHttpVersion() == 1.0f) {
+                // Shut down connection
+                resp->set_header("Connection", "close");
+                close_connection = true;
+            } else {
+                resp->set_header("Connection", "keep-alive");
+            }
+        }
+
+        std::string messg = resp->build_response();
+        delete resp;
+
+        send(client, messg.c_str(), messg.length(), 0);
     }
-
-    std::string messg = resp->build_response();
-    delete resp; 
-
-    send(client, messg.c_str(), messg.length(), 0);
+    
+    std::cout << "Shutting down connection" << std::endl; 
 
     close(client);
 }

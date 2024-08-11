@@ -41,6 +41,15 @@ std::string Response::build_response() {
     return resp_string;
 }
 
+std::string Response::get_header(std::string header){
+    if(!this->headers.contains(header)){
+        throw HeaderNotFoundException(); 
+    }
+
+    return this->headers.find(header)->second;
+    
+}
+
 Response *Response::set_header(std::string header, std::string value) {
     if (headers.contains(header)) {
         headers.at(header) = value;
