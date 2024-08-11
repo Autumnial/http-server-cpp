@@ -1,4 +1,5 @@
 #include "Server.hpp"
+#include <algorithm>
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
@@ -17,6 +18,7 @@
 typedef Response * (*Route)(Request);
 
 const int NUM_THREADS = 10;
+const int REQ_BUF = 8096;
 
 std::queue<int> connection_queue;
 pthread_mutex_t connection_queue_mutex;
@@ -125,18 +127,24 @@ Request parse_request(std::string req_str) {
     int next_line = req_str.find('\n');
 
     while (next_line != std::string::npos) {
+
+
         std::string header = req_str.substr(0, next_line);
+        std::cout << header << '\n'; 
         req_str = req_str.substr(next_line + 1);
-        // parse header
+        // Parse header
         int         colon = header.find(':');
         std::string header_title = header.substr(0, colon);
         std::string header_value = header.substr(colon + 1);
 
         req.headers.insert({header_title, header_value});
 
-        // new line
+        // New line
         next_line = req_str.find('\n');
     }
+
+    req.body = req_str; 
+
 
     return req;
 }
@@ -155,7 +163,7 @@ void Server::run() {
 
     while (true) {
 
-        // handle connection
+        // Handle connection
         int client;
         client = accept(sock, NULL, NULL);
 
@@ -177,8 +185,8 @@ void Server::run() {
 
 void handle_connection(int client) {
 
-    char buff[4096] = {0};
-    recv(client, &buff, 4096, 0);
+    char buff[REQ_BUF] = {0};
+    recv(client, &buff, REQ_BUF, 0);
 
     std::string buf(buff);
 
