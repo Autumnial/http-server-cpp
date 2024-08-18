@@ -24,7 +24,6 @@ std::string Request::getHeader(const std::string &key) const {
 }
 
 void Request::setHeader(const std::string &key, const std::string &value) {
-    std::string value_trimmed = value; 
     headers[key] = value;
 }
 

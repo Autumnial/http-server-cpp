@@ -105,6 +105,8 @@ Server::Server(in_port_t port) {
 
 Request parse_request(std::string req_str) {
 
+    std::cout << req_str << "\r\n\r\n";
+
     Request req;
 
     int newline = req_str.find('\n');
@@ -125,7 +127,11 @@ Request parse_request(std::string req_str) {
     int slash = http.find('/');
     http = http.substr(slash + 1);
 
+    std::cout << http << "\r\n";
+
     float http_vers = std::stof(http);
+
+    std::cout << http_vers << "\r\n\r\n";
 
     req.setMethod(method_from_string(method));
     req.setPath(path);
@@ -134,12 +140,17 @@ Request parse_request(std::string req_str) {
 
     while (next_line != std::string::npos) {
 
-        std::string header = req_str.substr(0, next_line );
+        std::string header = req_str.substr(0, next_line);
         req_str = req_str.substr(next_line + 1);
         // Parse header
         int         colon = header.find(':');
         std::string header_title = header.substr(0, colon);
         std::string header_value = header.substr(colon + 2);
+
+        if (header_value.length() >= 1) {
+
+            header_value.pop_back();
+        }
 
         req.setHeader(header_title, header_value);
 
@@ -147,7 +158,9 @@ Request parse_request(std::string req_str) {
         next_line = req_str.find('\n');
     }
 
-    req.setBody(req_str);
+    if (req_str.length() > 0) {
+        req.setBody(req_str);
+    }
 
     return req;
 }
@@ -215,8 +228,7 @@ void handle_connection(int client) {
 
         try {
             auto connection = req.getHeader("Connection");
-            std::cout << connection << std::endl;
-            if (connection == "close\r") {
+            if (connection == "close") {
                 // Shut down connection
                 resp->set_header("Connection", "close");
                 close_connection = true;
@@ -239,8 +251,8 @@ void handle_connection(int client) {
 
         send(client, messg.c_str(), messg.length(), 0);
     }
-    
-    std::cout << "Shutting down connection" << std::endl; 
+
+    std::cout << "Shutting down connection" << std::endl;
 
     close(client);
 }
