@@ -5,7 +5,6 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
 #include <string>
 #include <sys/socket.h>
 #include <netinet/in.h>

@@ -1,16 +1,16 @@
 #include "Server.hpp"
-#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
+#include <exception>
 #include <iostream>
 #include <pthread.h>
 #include <queue>
+#include <stdexcept>
 #include <string>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <thread>
 #include <unistd.h>
 #include "Enums.hpp"
 #include "Request.hpp"
@@ -88,7 +88,7 @@ Server::Server(in_port_t port) {
     this->sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock <= 0) {
-        std::cout << std::strerror(errno) << std::endl;
+        // std::cout << std::strerror(errno) << std::endl;
         exit(-1);
     }
 
@@ -98,7 +98,7 @@ Server::Server(in_port_t port) {
     addr.sin_port = htons(port);
 
     if (bind(sock, (sockaddr *)&addr, sizeof(addr)) < 0) {
-        std::cout << std::strerror(errno) << std::endl;
+        // std::cout << std::strerror(errno) << std::endl;
         exit(-2);
     }
 }
@@ -106,6 +106,11 @@ Server::Server(in_port_t port) {
 Request parse_request(std::string req_str) {
 
     std::cout << req_str << "\r\n\r\n";
+
+    // Some clients may, for whatever godforsaken reason, send a completely empty packet our way! Fun! This should handle that, though :)
+    if (req_str.length() == 0) {
+        throw std::exception();  
+    }
 
     Request req;
 
@@ -124,12 +129,18 @@ Request parse_request(std::string req_str) {
     std::string path = request_line.substr(0, space);
     std::string http = request_line.substr(space + 1);
 
-    int slash = http.find('/');
-    http = http.substr(slash + 1);
+    int         slash = http.find('/');
+    std::string http_vers_str = http.substr(slash + 1, 3);
 
-    std::cout << http << "\r\n";
+    std::cout << http_vers_str.size() << "\r\n";
 
-    float http_vers = std::stof(http);
+    float http_vers;
+    try {
+        http_vers = std::stof(http_vers_str);
+    } catch (std::invalid_argument e) {
+        std::cout << e.what() << "\r\n";
+        exit(-1);
+    }
 
     std::cout << http_vers << "\r\n\r\n";
 
@@ -147,7 +158,9 @@ Request parse_request(std::string req_str) {
         std::string header_title = header.substr(0, colon);
         std::string header_value = header.substr(colon + 2);
 
-        if (header_value.length() >= 1) {
+        // Otherwise we might pop a string to null length, which kinda fucks up
+        // later stuff :3
+        if (header_value.length() >= 2) {
 
             header_value.pop_back();
         }
@@ -184,13 +197,11 @@ void Server::run() {
         client = accept(sock, NULL, NULL);
 
         if (client == -1) {
-            std::cout << "failed to bind \n";
+            // std::cout << "failed to bind \n";
             std::cout << strerror(errno) << std::endl;
             close(sock);
             exit(-3);
         }
-
-        // TODO: put in queue;
 
         pthread_mutex_lock(&connection_queue_mutex);
         connection_queue.push(client);
@@ -201,14 +212,14 @@ void Server::run() {
 
 void handle_connection(int client) {
 
-    // loop while connected
+    // Loop while connected
 
     std::array<char, REQ_BUF> buff;
     bool                      close_connection = false;
 
     while (!close_connection) {
         buff.fill(0);
-        // handle request
+        // Handle request
         recv(client, &buff, REQ_BUF, 0);
 
         std::string buf(buff.data());
@@ -219,7 +230,7 @@ void handle_connection(int client) {
 
         auto r = routes_p->find(req.getPath());
 
-        // map.find returns end() if not found
+        // `map.find` returns end() if not found
         if (r != routes_p->end()) {
             resp = (r->second)(req);
         } else {
