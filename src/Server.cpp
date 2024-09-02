@@ -3,7 +3,6 @@
 #include <cerrno>
 #include <cstddef>
 #include <cstring>
-#include <exception>
 #include <iostream>
 #include <pthread.h>
 #include <queue>
@@ -16,6 +15,7 @@
 #include "Request.hpp"
 #include "Response.hpp"
 #include "ncurses.h"
+#include "Exceptions.hpp"
 typedef Response *(*Route)(Request);
 
 const int NUM_THREADS = 10;
@@ -80,6 +80,12 @@ Response *not_found() {
     return r;
 }
 
+Response *bad_request() {
+    auto r =
+        Response::create_response()->set_statusCode(StatusCode::BAD_REQUEST);
+    return r;
+}
+
 void Server::add_route(std::string route, Route func) {
     routes.insert({route, func});
 };
@@ -88,7 +94,7 @@ Server::Server(in_port_t port) {
     this->sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock <= 0) {
-        // std::cout << std::strerror(errno) << std::endl;
+        std::cout << std::strerror(errno) << std::endl;
         exit(-1);
     }
 
@@ -98,7 +104,7 @@ Server::Server(in_port_t port) {
     addr.sin_port = htons(port);
 
     if (bind(sock, (sockaddr *)&addr, sizeof(addr)) < 0) {
-        // std::cout << std::strerror(errno) << std::endl;
+        std::cout << std::strerror(errno) << std::endl;
         exit(-2);
     }
 }
@@ -107,9 +113,10 @@ Request parse_request(std::string req_str) {
 
     std::cout << req_str << "\r\n\r\n";
 
-    // Some clients may, for whatever godforsaken reason, send a completely empty packet our way! Fun! This should handle that, though :)
+    // Some clients may, for whatever godforsaken reason, send a completely
+    // empty packet our way! Fun! This should handle that, though :)
     if (req_str.length() == 0) {
-        throw std::exception();  
+        throw EmptyRequest();
     }
 
     Request req;
@@ -197,7 +204,7 @@ void Server::run() {
         client = accept(sock, NULL, NULL);
 
         if (client == -1) {
-            // std::cout << "failed to bind \n";
+            std::cout << "failed to bind \n";
             std::cout << strerror(errno) << std::endl;
             close(sock);
             exit(-3);
@@ -224,9 +231,17 @@ void handle_connection(int client) {
 
         std::string buf(buff.data());
 
-        Request req = parse_request(buf);
+        Request req;
 
         Response *resp;
+
+        bool resp_generated = false;
+
+        try {
+            req = parse_request(buf);
+        } catch (EmptyRequest) {
+            return;
+        };
 
         auto r = routes_p->find(req.getPath());
 

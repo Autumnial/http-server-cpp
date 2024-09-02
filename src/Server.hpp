@@ -2,7 +2,6 @@
 
 #include "Request.hpp"
 #include "Response.hpp"
-#include <cstdint>
 #include <map>
 #include <netinet/in.h>
 #include <pthread.h>
