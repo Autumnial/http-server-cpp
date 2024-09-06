@@ -29,17 +29,29 @@ Response *sleepy(Request _r) {
     return response;
 }
 
-Response *personal_greeting(Request _r) {
+Response *personal_greeting(Request r) {
     return Response::create_response()
         ->set_statusCode(StatusCode::OK)
-        ->set_body("");
+        ->set_body("Hello there, " + r.getBody() + "!");
+}
+
+Response *sleepy_two(Request _r) {
+    sleep(5);
+    return Response::create_response()
+        ->set_statusCode(StatusCode::OK)
+        ->set_body("hello i am /sleepy's little sister im also quite sleepy!");
 }
 
 int main(int argc, char *argv[]) {
 
     Server server(6969);
+    Router sleepy_router("/sleepy");
+    server.add_router(&sleepy_router);
+
+    sleepy_router.add_route("/", sleepy);
+    sleepy_router.add_route("/sleepy2", sleepy_two);
+
     server.add_route("/", greet);
-    server.add_route("/sleepy", sleepy);
     server.add_route("/greet_name", personal_greeting);
     server.run();
 

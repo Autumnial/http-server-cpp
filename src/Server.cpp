@@ -1,3 +1,4 @@
+#include "Router.hpp"
 #include "Server.hpp"
 #include <array>
 #include <cerrno>
@@ -11,6 +12,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <vector>
 #include "Enums.hpp"
 #include "Request.hpp"
 #include "Response.hpp"
@@ -18,14 +20,15 @@
 #include "Exceptions.hpp"
 typedef Response *(*Route)(Request);
 
-const int NUM_THREADS = 10;
+const int NUM_THREADS = 20;
 const int REQ_BUF = 8096;
+
+Router * root_t; 
 
 std::queue<int> connection_queue;
 pthread_mutex_t connection_queue_mutex;
 pthread_cond_t  connection_queue_not_empty;
 
-std::map<std::string, Route> *routes_p;
 
 void handle_connection(int client);
 
@@ -87,10 +90,11 @@ Response *bad_request() {
 }
 
 void Server::add_route(std::string route, Route func) {
-    routes.insert({route, func});
+
+    root.add_route(route, func);
 };
 
-Server::Server(in_port_t port) {
+Server::Server(in_port_t port) : root("/") {
     this->sock = socket(AF_INET, SOCK_STREAM, 0);
 
     if (sock <= 0) {
@@ -110,8 +114,6 @@ Server::Server(in_port_t port) {
 }
 
 Request parse_request(std::string req_str) {
-
-    std::cout << req_str << "\r\n\r\n";
 
     // Some clients may, for whatever godforsaken reason, send a completely
     // empty packet our way! Fun! This should handle that, though :)
@@ -139,17 +141,8 @@ Request parse_request(std::string req_str) {
     int         slash = http.find('/');
     std::string http_vers_str = http.substr(slash + 1, 3);
 
-    std::cout << http_vers_str.size() << "\r\n";
-
     float http_vers;
-    try {
         http_vers = std::stof(http_vers_str);
-    } catch (std::invalid_argument e) {
-        std::cout << e.what() << "\r\n";
-        exit(-1);
-    }
-
-    std::cout << http_vers << "\r\n\r\n";
 
     req.setMethod(method_from_string(method));
     req.setPath(path);
@@ -186,9 +179,10 @@ Request parse_request(std::string req_str) {
 }
 
 void Server::run() {
-    routes_p = &this->routes;
     pthread_t input_thread;
     pthread_create(&input_thread, NULL, manual_close, &sock);
+
+    root_t = &root;
 
     for (int i = 0; i < NUM_THREADS; i++) {
         pthread_t connection_thread;
@@ -217,6 +211,9 @@ void Server::run() {
     }
 }
 
+Route match_route(std::string path) {
+   return root_t->match_route(path); 
+}
 void handle_connection(int client) {
 
     // Loop while connected
@@ -243,12 +240,11 @@ void handle_connection(int client) {
             return;
         };
 
-        auto r = routes_p->find(req.getPath());
-
-        // `map.find` returns end() if not found
-        if (r != routes_p->end()) {
-            resp = (r->second)(req);
-        } else {
+        auto route = req.getPath();
+        try {
+            auto route_func = match_route(route);
+            resp = (route_func)(req);
+        } catch (InvalidRoute) {
             resp = not_found();
         }
 
@@ -278,7 +274,7 @@ void handle_connection(int client) {
         send(client, messg.c_str(), messg.length(), 0);
     }
 
-    std::cout << "Shutting down connection" << std::endl;
-
     close(client);
 }
+
+void Server::add_router(Router *r) { root.add_subrouter(r); }
